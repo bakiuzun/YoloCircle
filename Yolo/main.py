@@ -1,3 +1,4 @@
+from predictor import CirclePredictor
 from model import YoloCircle
 import cv2
 import numpy as np
@@ -13,4 +14,13 @@ img = img.unsqueeze(0)
 #img shape (1,3,640,640)
 model = YoloCircle(cfg="myyolov8m.yaml",nc=1)
 model.eval()
-model(img)
+
+
+from predictor import *
+
+from ultralytics.models.yolo.detect import DetectionPredictor
+#a = DetectionPredictor(cfg="cfg.yaml")
+#a(source=img, model=model)
+
+a = CirclePredictor(cfg="cfg.yaml")
+a(source=img, model=model)

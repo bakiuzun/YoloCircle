@@ -23,13 +23,10 @@ class CircleBoxes(BaseTensor):
         orig_shape (tuple): Original image size, in the format (height, width).
 
     Attributes:
-        xyxy (torch.Tensor | numpy.ndarray): The boxes in xyxy format.
         conf (torch.Tensor | numpy.ndarray): The confidence values of the boxes.
         cls (torch.Tensor | numpy.ndarray): The class values of the boxes.
         id (torch.Tensor | numpy.ndarray): The track IDs of the boxes (if available).
         xywh (torch.Tensor | numpy.ndarray): The boxes in xywh format.
-        xyxyn (torch.Tensor | numpy.ndarray): The boxes in xyxy format normalized by original image size.
-        xywhn (torch.Tensor | numpy.ndarray): The boxes in xywh format normalized by original image size.
         data (torch.Tensor): The raw bboxes tensor (alias for `boxes`).
 
     Methods:

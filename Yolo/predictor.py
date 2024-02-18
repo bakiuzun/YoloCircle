@@ -150,15 +150,10 @@ class CirclePredictor(BasePredictor):
         return log_string
     def postprocess(self, preds, img, orig_imgs):
         """Post-processes predictions and returns a list of Results objects."""
-        print("GIRDIM")
-        print("PREDS = ",preds[0].shape)
-        print("PREDS = ",preds[1][0].shape)
-        print("PREDS = ",preds[1][1].shape)
-        print("PREDS = ",preds[1][2].shape)
 
         preds = non_max_suppression(preds,
                                         0.0,
-                                        0.0,
+                                        0.25,
                                         agnostic=self.args.agnostic_nms,
                                         max_det=self.args.max_det,
                                         classes=self.args.classes)

@@ -1,5 +1,6 @@
 
 import torch
+import fractions
 
 # Ultralytics YOLO 🚀, AGPL-3.0 license
 
@@ -143,29 +144,41 @@ def non_max_suppression(
             x = x[x[:, 4].argsort(descending=True)[:max_nms]]  # sort by confidence and remove excess boxes
 
         # Batched NMS
-
         c = x[:, 4:5] * (0 if agnostic else max_wh)  # classes
         boxes, scores = x[:, :3] + c, x[:, 3]  # boxes (offset by class), scores
 
-        #i = torchvision.ops.nms(boxes, scores, iou_thres)  # NMS
-        #i = i[:max_det]  # limit detections
+        print("ALOOOOO = ",scores)
+        #order = torch.argsort(-scores)
+        order = torch.arange(boxes.shape[0])
+        indices = torch.arange(boxes.shape[0])
+        keep = torch.ones_like(indices, dtype=torch.bool)
+        #circleIOU(boxes,boxes)
 
-        # # Experimental
-        # merge = False  # use merge-NMS
-        # if merge and (1 < n < 3E3):  # Merge NMS (boxes merged using weighted mean)
-        #     # Update boxes as boxes(i,4) = weights(i,n) * boxes(n,4)
-        #     from .metrics import box_iou
-        #     iou = box_iou(boxes[i], boxes) > iou_thres  # iou matrix
-        #     weights = iou * scores[None]  # box weights
-        #     x[i, :4] = torch.mm(weights, x[:, :4]).float() / weights.sum(1, keepdim=True)  # merged boxes
-        #     redundant = True  # require redundant detections
-        #     if redundant:
-        #         i = i[iou.sum(1) > 1]  # require redundancy
 
-        print("X SHAPE = ",x.shape)
-        print("OUT PUT = ",output[0].shape)
-        output[xi] = x[:4]
-        print("OUT ",output[xi].shape)
+        #indices = indices[:500]
+
+        for i in indices:
+            print("I = ",i)
+            print("KEEP i = ",keep[i])
+            if keep[i]:
+                bbox = boxes[order[i]]
+                #filtered_boxes = boxes[order[i+1:]][keep[order[i+1:]]]
+                iou = box_iou(bbox,boxes[order[i+1:] * keep[i+1:]])
+                #non_overlapped = torch.nonzero(iou > iou_thres)
+                #print("IOUE = ",iou)
+                overlapped = torch.nonzero(iou > iou_thres)
+                keep[overlapped + i + 1] = 0
+                #keep[i + 1 + non_overlapped] = 0
+
+
+        print("KEEP = ",keep)
+
+        i = order[keep]
+        i = i[:max_det]
+
+        output[xi] = x[i]
+        #output[xi] = x[:6]
+
         if mps:
             output[xi] = output[xi].to(device)
         if (time.time() - t) > time_limit:
@@ -223,3 +236,147 @@ def make_anchors(feats, strides, grid_cell_offset=0.5):
         anchor_points.append(torch.stack((sx, sy), -1).view(-1, 2))
         stride_tensor.append(torch.full((h * w, 1), stride, dtype=dtype, device=device))
     return torch.cat(anchor_points), torch.cat(stride_tensor)
+
+
+
+def box_iou(boxes_1,bboxes):
+
+    res = torch.zeros((bboxes.shape[0]))
+
+    center_x_1 = boxes_1[0]
+    center_y_1 = boxes_1[1]
+    radius_1 = boxes_1[2]
+
+    dist_x = (bboxes[:,0] - center_x_1)**2
+    dist_y = (bboxes[:,1] - center_y_1)**2
+    distance_boxes = torch.sqrt(dist_x + dist_y)
+
+    radi_minus = abs(radius_1 - bboxes[:,2])
+    radi_add = abs(radius_1 + bboxes[:,2])
+
+    condition = (torch.abs(boxes_1[2] - boxes_1[2]) <= distance_boxes) & (distance_boxes <= torch.abs(boxes_1[2] + boxes_1[2]))
+
+    matching_indices = torch.nonzero(condition).squeeze(1)
+    non_matching_indices = torch.nonzero(~condition).squeeze(1)
+
+    bboxes = bboxes[matching_indices]
+
+    matching_distance_boxes = distance_boxes[matching_indices]
+    non_matching_distance_boxes = distance_boxes[non_matching_indices]
+
+    ## Check the overlap
+
+    for i in range(len(bboxes)):
+
+        r1,r2 = bboxes[i][-1],radius_1
+        d_squared = matching_distance_boxes[i]**2
+        overlap = solve(r1, r2, d_squared)
+        union = math.pi * (r2**2) + math.pi * (r1**2) -  overlap
+        if union == 0:
+            res[i] = 0
+        else:
+            res[i] = overlap/union
+
+
+    """
+    if abs(boxes_1[2] - boxes_1[2]) <= distance_boxes and distance_boxes <= abs(boxes_1[2] + boxes_1[2]):
+        # "OVERLAPING"
+        #θ = cos−1 r2A + d2 − r2B (2) 2rAd
+        theta_bbox1 = math.acos( (boxes_1[2]**2 + distance_boxes**2 - bboxes[2]**2  ) / (2*boxes_1[2] * distance_boxes))
+        theta_bbox2 = math.acos( (bboxes[2]**2 + distance_boxes**2 - boxes_1[2]**2  ) / (2*bboxes[2] * distance_boxes))
+
+        area_bbox1_and_2 = (theta_bbox1*boxes_1[2]**2) + (theta_bbox2*bboxes[2]**2) - (0.5*boxes_1[2]**2*math.sin(2*theta_bbox1)) - (0.5*bboxes[2]**2*math.sin(2*theta_bbox2))
+        area_bbox1_or_2 = (math.pi*boxes_1[2]**2 + math.pi*bboxes[2]**2) - area_bbox1_and_2
+        cIoU = area_bbox1_and_2 / area_bbox1_or_2
+        return cIoU
+    """
+    return res
+
+
+
+def circleIOU(d,g):
+    ious = np.zeros((len(d), len(g)))
+    for di in range(len(d)):
+        center_d_x = d[di][0]
+        center_d_y = d[di][1]
+        center_d_r = d[di][2]
+        for gi in range(len(g)):
+            center_g_x = g[gi][0]
+            center_g_y = g[gi][1]
+            center_g_r = g[gi][2]
+            distance = math.sqrt((center_d_x - center_g_x)**2 + (center_d_y - center_g_y)**2)
+            if center_d_r <=0 or center_g_r <=0 or distance > (center_d_r + center_g_r) :
+                ious[di, gi] = 0
+            else:
+                overlap = solve(center_d_r, center_g_r, distance**2)
+                union = math.pi * (center_d_r**2) + math.pi * (center_g_r**2) -  overlap
+                if union == 0:
+                    ious[di,gi] = 0
+                else:
+                    ious[di, gi] = overlap/union
+    return ious
+
+
+def f(x):
+    """
+    Compute  x - sin(x) cos(x)  without loss of significance
+    """
+    if abs(x) < 0.01:
+        return 2 * x ** 3 / 3 - 2 * x ** 5 / 15 + 4 * x ** 7 / 315
+    return x - math.sin(x) * math.cos(x)
+
+
+def acos_sqrt(x, sgn):
+    """
+    Compute acos(sgn * sqrt(x)) with accuracy even when |x| is close to 1.
+    http://www.wolframalpha.com/input/?i=acos%28sqrt%281-y%29%29
+    http://www.wolframalpha.com/input/?i=acos%28sqrt%28-1%2By%29%29
+    """
+    assert isinstance(x, fractions.Fraction)
+
+    y = 1 - x
+    if y < 0.01:
+        # pp('y < 0.01')
+        numers = [1, 1, 3, 5, 35]
+        denoms = [1, 6, 40, 112, 1152]
+        ans = fractions.Fraction('0')
+        for i, (n, d) in enumerate(zip(numers, denoms)):
+            ans += y ** i * n / d
+        assert isinstance(y, fractions.Fraction)
+        ans *= math.sqrt(y)
+        if sgn >= 0:
+            return ans
+        else:
+            return math.pi - ans
+
+    return math.acos(sgn * math.sqrt(x))
+
+
+def solve(r1, r2, d_squared):
+    r1, r2 = min(r1, r2), max(r1, r2)
+
+    d = math.sqrt(d_squared)
+    if d >= r1 + r2:  # circles are far apart
+        return 0.0
+    if r2 >= d + r1:  # whole circle is contained in the other
+        return math.pi * r1 ** 2
+
+    r1f, r2f, dsq = map(fractions.Fraction, [str(r1.detach().numpy()), str(r2.detach().numpy() ), str(d_squared.detach().numpy())])
+    r1sq, r2sq = map(lambda i: i * i, [r1f, r2f])
+    numer1 = r1sq + dsq - r2sq
+    cos_theta1_sq = numer1 * numer1 / (4 * r1sq * dsq)
+    numer2 = r2sq + dsq - r1sq
+    cos_theta2_sq = numer2 * numer2 / (4 * r2sq * dsq)
+    theta1 = acos_sqrt(cos_theta1_sq, math.copysign(1, numer1))
+    theta2 = acos_sqrt(cos_theta2_sq, math.copysign(1, numer2))
+    result = r1 * r1 * f(theta1) + r2 * r2 * f(theta2)
+
+    # pp("d = %.16e" % d)
+    # pp("cos_theta1_sq = %.16e" % cos_theta1_sq)
+    # pp("theta1 = %.16e" % theta1)
+    # pp("theta2 = %.16e" % theta2)
+    # pp("f(theta1) = %.16e" % f(theta1))
+    # pp("f(theta2) = %.16e" % f(theta2))
+    # pp("result = %.16e" % result)
+
+    return result

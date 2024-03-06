@@ -153,7 +153,7 @@ class CirclePredictor(BasePredictor):
 
         preds = non_max_suppression(preds,
                                         0.0,
-                                        0.25,
+                                        0.10,
                                         agnostic=self.args.agnostic_nms,
                                         max_det=self.args.max_det,
                                         classes=self.args.classes)

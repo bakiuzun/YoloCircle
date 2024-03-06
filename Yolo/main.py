@@ -6,7 +6,7 @@ import torch
 from torchvision.transforms import ToTensor
 
 
-img = np.array(cv2.imread("image_test.jpeg"))
+img = np.array(cv2.imread("image_test.png"))
 img = cv2.resize(img,(640,640))
 img = ToTensor()(img)
 img = img.unsqueeze(0)
